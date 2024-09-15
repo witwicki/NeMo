@@ -22,6 +22,8 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
+from nemo.collections.nlp.models import PunctuationCapitalizationModel
+
 from nemo.collections.asr.metrics.der import concat_perm_word_error_rate
 from nemo.collections.asr.metrics.wer import word_error_rate
 from nemo.collections.asr.models import ClusteringDiarizer
@@ -682,7 +684,7 @@ class OfflineDiarWithASR:
         return enhanced_word_ts_dict
 
     def get_transcript_with_speaker_labels(
-        self, diar_hyp: Dict[str, List[str]], word_hyp: Dict[str, List[str]], word_ts_hyp: Dict[str, List[float]]
+        self, diar_hyp: Dict[str, List[str]], word_hyp: Dict[str, List[str]], word_ts_hyp: Dict[str, List[float]], repunctuate=False
     ) -> Dict[str, Dict[str, float]]:
         """
         Match the diarization result with the ASR output.
@@ -745,7 +747,7 @@ class OfflineDiarWithASR:
                 word_dict_seq_list = self.realign_words_with_lm(word_dict_seq_list)
 
             # Create a transscript information json dictionary from the output variables
-            trans_info_dict[uniq_id] = self._make_json_output(uniq_id, diar_labels, word_dict_seq_list)
+            trans_info_dict[uniq_id] = self._make_json_output(uniq_id, diar_labels, word_dict_seq_list, repunctuate=repunctuate)
         logging.info(f"Diarization with ASR output files are saved in: {self.root_path}/pred_rttms")
         return trans_info_dict
 
@@ -817,7 +819,7 @@ class OfflineDiarWithASR:
         return word_dict_seq_list
 
     def _make_json_output(
-        self, uniq_id: str, diar_labels: List[str], word_dict_seq_list: List[Dict[str, float]],
+        self, uniq_id: str, diar_labels: List[str], word_dict_seq_list: List[Dict[str, float]], repunctuate=False
     ) -> Dict[str, Dict[str, str]]:
         """
         Generate json output files and transcripts from the ASR and diarization results.
@@ -920,6 +922,18 @@ class OfflineDiarWithASR:
         session_trans_dict['transcription'] = ' '.join(word_seq_list)
         # add sentences to transcription information dict
         session_trans_dict['sentences'] = sentences
+        # add punctuation and capitalization
+        if(repunctuate):
+            #punct_model = PunctuationModel(model="kredor/punctuate-all")
+            pc_model = PunctuationCapitalizationModel.from_pretrained("punctuation_en_bert")
+            for entry in session_trans_dict['sentences']:
+                text = entry["text"]
+                if(len(text)>0):
+                    #punctuated_text = punct_model.restore_punctuation(entry['text'])
+                    punctuated_text = pc_model.add_punctuation_capitalization([entry['text'],])[0]
+                    entry['text'] = punctuated_text
+                    print(punctuated_text)
+
         self._write_and_log(uniq_id, session_trans_dict, audacity_label_words, gecko_dict, sentences)
         return session_trans_dict
 
